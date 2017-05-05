@@ -16,15 +16,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/sendfile.h>
-#include "SharedLibrary/Results.h"
-#include "SharedLibrary/Sender.h"
-#include "SharedLibrary/Conversor.h"
-#include "SharedLibrary/Headers.h"
-
-typedef struct {
-	t_header type;
-	int		valueSize;
-}Header;
+#include "Results.h"
+#include "Headers.h"
+#include "FileSendingCommons.h"
 
 ResultWithValue GetFile(char fileName[], char mode[]){
 	FILE *file = fopen(fileName, mode);
@@ -68,13 +62,22 @@ Header BuildHeader(t_header type, int valueSize){
 }
 
 void* ResultWithHeader(Header header, int valueSize){
-	void * resultBuffer = malloc(1 + sizeof(Header) + valueSize );
+	void * resultBuffer = malloc(sizeof(Header) + valueSize );
 	memcpy(resultBuffer, &header, sizeof(Header));
 
 	return resultBuffer;
 }
 
-ResultWithValue GetSerializedFile(char fileName[]){
+void* SeralizeFile(char* fileBuffer, int fileSize){
+	Header header = BuildHeader(HEADER_ARCHIVO,fileSize);
+	void* resultBuffer = ResultWithHeader(header, fileSize);
+
+	memcpy(resultBuffer + sizeof (Header), fileBuffer, fileSize);
+
+	return resultBuffer;
+}
+
+ResultWithValue GetSerializedFile(char fileName[], int** fileSizeOut){
 	ResultWithValue r;
 
 	r =	GetFile(fileName,"rb");
@@ -94,11 +97,29 @@ ResultWithValue GetSerializedFile(char fileName[]){
 	r = GetFileAsBytes(file,fileSize);
 
 	char* fileBuffer = r.value;
-	Header header = BuildHeader(HEADER_ARCHIVO,fileSize);
+	void* resultBuffer = SeralizeFile(fileBuffer,fileSize);
 
-
-	void* resultBuffer = ResultWithHeader(header, fileSize);
-	memcpy(resultBuffer + sizeof (Header) + 1, fileBuffer, fileSize);
+	if(fileSizeOut != NULL)
+		*fileSizeOut = fileSize;
 
 	return OkWithValue(resultBuffer);
+}
+
+
+ResultWithValue DeserializeHeaderFrom(void* message){
+	Header* header = malloc(sizeof(Header));
+
+	memcpy(header, message, sizeof(Header));
+
+	return OkWithValue(header);
+}
+
+
+
+ResultWithValue DeserializeFileFrom(void* message, int fileSize){
+	char* fileBuffer = malloc(sizeof(Header));
+
+	memcpy(fileBuffer, message + sizeof(Header), fileSize);
+
+	return OkWithValue(fileBuffer);
 }
